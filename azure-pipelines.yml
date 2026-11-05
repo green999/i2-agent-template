@@ -1,0 +1,25 @@
+# Template release check: every pull request and every tag generates projects and runs their tests.
+trigger:
+  branches: { include: [main] }
+  tags: { include: ["v*"] }
+pr: [main]
+
+resources:
+  repositories:
+    - repository: platformauth
+      type: git
+      name: i2-platform-auth          # <project>/i2-platform-auth in Azure DevOps
+
+pool: { vmImage: ubuntu-latest }      # or your self-hosted pool
+
+steps:
+  - checkout: self
+  - checkout: platformauth
+  - task: UsePythonVersion@0
+    inputs: { versionSpec: "3.11" }
+  - script: |
+      python -m pip install --upgrade pip
+      pip install copier -e i2-platform-auth
+      pip install langgraph==1.2.18 langchain-core==1.4.7 langchain-openai==1.2.2 langchain-mcp-adapters==0.3.2 mcp==1.30.0 pyyaml httpx pytest
+      python i2-agent-template/check_template.py
+    displayName: Generate projects and run their tests

@@ -1,0 +1,7 @@
+# Laptop / CI: the agent itself plus the local server, CLI and tests.
+-e .
+langgraph-api==0.16.9
+langgraph-cli[inmem]==0.4.40
+langgraph-sdk
+python-dotenv[cli]==1.2.1
+pytest==9.0.2

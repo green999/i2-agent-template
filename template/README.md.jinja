@@ -1,0 +1,51 @@
+# {{ name }}
+
+{{ purpose }}
+
+| | |
+|---|---|
+| Owner | {{ owner }} ({{ team }}) |
+| Graph id (assistant) | `{{ name | replace('-', '_') }}` |
+| Caller auth | `{{ agent_auth }}`{% if agent_auth == 'entra' %} - user tokens for `{{ identity_uri }}` from `{{ ui_client_id }}`{% else %} - LangSmith deployment API key only{% endif %} |
+| MCP servers | {{ uses_mcp }} |
+| Data class | {{ data_class }} |
+
+## Your job
+
+- `src/agent/prompt.md` - the system prompt
+- `agent.yaml` - `uses_mcp` lists the MCP servers; tools come from them at run time
+- `evals/dataset.jsonl` - real questions with expected answers (`expect_contains`, `expect_absent`, `expect_tool`)
+- More nodes in `src/agent/graph.py` only when you need them. Identity code (`auth.py`, `gateway.py`) is the template's.
+
+## Run it on a laptop
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e <i2-platform-auth folder>     # a PATH - never `pip install platform-auth` (different package on PyPI)
+pip install -r requirements-dev.txt
+Copy-Item .env.example .env.local                     # fill it in; never commit it
+python -m pytest -q tests
+python -m dotenv -f .env.local run -- langgraph dev --port 2024 --no-browser
+python run_agent_test.py "your question"
+```
+
+macOS / Linux: the same with `python3.11 -m venv .venv`, `. .venv/bin/activate`, `cp .env.example .env.local`.
+
+## MCP route
+
+`MCP_ROUTE=direct` calls each server at `MCP_URL_<SERVER>` (migration). `MCP_ROUTE=gateway` calls
+`{GATEWAY_URL}/mcp/<server>/mcp` (APIM) with an On-Behalf-Of token per server and needs `agent_auth=entra`.
+Switching to entra later: `copier update -a .copier-answers.yml --data agent_auth=entra` (or regenerate).
+
+## Build and deploy
+
+```bash
+pip wheel --no-deps -w vendor <i2-platform-auth folder>   # once per platform-auth version
+langgraph build -t <acr>.azurecr.us/{{ name }}:<tag>
+docker push <acr>.azurecr.us/{{ name }}:<tag>
+```
+
+Then point the LangSmith deployment at the new image. Company CA certificates: see `certs/README.md`.

@@ -1,0 +1,19 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "{{ name | replace('-', '_') }}": "./src/agent/graph.py:graph"
+  },
+{%- if agent_auth == 'entra' %}
+  "auth": {
+    "path": "./src/agent/auth.py:auth"
+  },
+{%- endif %}
+  "dockerfile_lines": [
+    "COPY vendor/ /tmp/vendor/",
+    "RUN ls /tmp/vendor/*.whl >/dev/null 2>&1 || { echo \"vendor/ has no i2-platform-auth wheel: run make vendor\"; exit 1; }; uv pip install --system --no-cache-dir --no-deps --no-index --find-links /tmp/vendor i2-platform-auth && rm -rf /tmp/vendor",
+    "COPY certs/ /tmp/certs/",
+    "RUN set -e; B=/usr/local/share/company-ca-bundle.pem; python -c \"import certifi; print(certifi.where())\" | xargs cat > $B; for f in /tmp/certs/*.crt /tmp/certs/*.pem; do [ -f \"$f\" ] && { echo; cat \"$f\"; } >> $B; done; rm -rf /tmp/certs",
+    "ENV REQUESTS_CA_BUNDLE=/usr/local/share/company-ca-bundle.pem SSL_CERT_FILE=/usr/local/share/company-ca-bundle.pem"
+  ],
+  "python_version": "3.11"
+}

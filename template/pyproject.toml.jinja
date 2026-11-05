@@ -1,0 +1,31 @@
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "{{ purpose }}"
+requires-python = ">=3.11"
+# Runtime pins (the image installs exactly these). Update deliberately: change, test, rebuild.
+# langgraph-api is NOT listed: the LangSmith base image provides and pins it.
+dependencies = [
+  "langgraph==1.2.18",
+  "langchain-core==1.4.7",
+  "langchain-openai==1.2.2",
+  "langchain-mcp-adapters==0.3.2",
+  "mcp==1.30.0",
+  "pyyaml==6.0.3",
+  "httpx==0.28.1",
+  # internal identity library (i2-platform-auth) is installed from vendor/, never from an index: see vendor/README.md
+  "pyjwt[crypto]==2.15.1",
+  "msal==1.39.0",
+  "azure-identity==1.27.0",
+  "cryptography==50.0.2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent = ["*.md", "*.json"]

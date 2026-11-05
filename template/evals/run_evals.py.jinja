@@ -1,0 +1,71 @@
+"""CI eval gate for {{ name }}: ask each dataset question, score the answers, fail the pipeline below THRESHOLD.
+Run against the agent deployed in the TEST environment (or the local langgraph dev server).
+
+    AGENT_URL=http://127.0.0.1:2024 python evals/run_evals.py
+
+Each case: {"user": ..., "question": ..., "expect_contains": [...], "expect_absent": [...], "expect_tool": "name"}
+{%- if agent_auth == 'entra' %}
+Users sign in through the mock issuer locally; in the test environment the pipeline injects tokens of dedicated
+test accounts as EVAL_TOKEN_<USER>.
+{%- else %}
+agent_auth=off: the deployment is protected by its LangSmith API key (LANGSMITH_API_KEY); "user" is a label only.
+{%- endif %}"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import pathlib
+import sys
+
+import httpx
+from langgraph_sdk import get_client
+
+THRESHOLD = float(os.getenv("EVAL_THRESHOLD", "0.85"))
+GRAPH = "{{ name | replace('-', '_') }}"
+AGENT_AUTH = "{{ agent_auth }}"
+ROOT = pathlib.Path(__file__).parent
+
+
+def user_token(user: str) -> str | None:
+    if AGENT_AUTH == "off":
+        return None
+    if os.getenv("AUTH_MODE", "local") != "local":
+        return os.environ[f"EVAL_TOKEN_{user.upper()}"]   # injected by the pipeline for test accounts
+    idp = os.getenv("LOCAL_IDP_URL", "http://127.0.0.1:9000")
+    r = httpx.post(f"{idp}/local-tenant/demo/login", json={"user": user, "scope": "{{ identity_uri }}/.default"})
+    r.raise_for_status()
+    return r.json()["access_token"]
+
+
+async def ask(user: str, question: str) -> tuple[str, set[str]]:
+    token = user_token(user)
+    client = get_client(url=os.getenv("AGENT_URL", "http://127.0.0.1:2024"),
+                        api_key=os.getenv("LANGSMITH_API_KEY") if token is None else None,
+                        headers={"Authorization": f"Bearer {token}"} if token else None)
+    thread = await client.threads.create()
+    out = await client.runs.wait(thread["thread_id"], GRAPH, input={"messages": [{"role": "user", "content": question}]})
+    messages = out["messages"]
+    tools = {c["name"] for m in messages for c in (m.get("tool_calls") or [])}
+    content = messages[-1]["content"]
+    text = content if isinstance(content, str) else "".join(c.get("text", "") for c in content if isinstance(c, dict))
+    return text, tools
+
+
+async def main() -> int:
+    cases = [json.loads(line) for line in (ROOT / "dataset.jsonl").read_text().splitlines() if line.strip()]
+    passed = 0
+    for c in cases:
+        answer, tools = await ask(c["user"], c["question"])
+        ok = all(s.lower() in answer.lower() for s in c.get("expect_contains", [])) and \
+            not any(s.lower() in answer.lower() for s in c.get("expect_absent", [])) and \
+            (not c.get("expect_tool") or c["expect_tool"] in tools)
+        passed += ok
+        print(f"{'PASS' if ok else 'FAIL'}  [{c['user']}] {c['question']}")
+    score = passed / len(cases)
+    print(f"score {score:.2f} (threshold {THRESHOLD})")
+    return 0 if score >= THRESHOLD else 1
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

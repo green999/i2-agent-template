@@ -1,0 +1,18 @@
+# Catalog entry for this agent. The pipeline writes it to the catalog on every deploy.
+kind: agent
+name: {{ name }}
+team: {{ team }}
+identity: {{ identity }}      # the team's agents app registration
+identity_uri: {{ identity_uri }}
+identity_client_id: {{ identity_client_id }}
+auth: "{{ agent_auth }}"      # off = LangSmith API key only; entra = signed-in user's token (target)
+owner: {{ owner }}
+purpose: {{ purpose }}
+description: {{ purpose }}
+tier: team
+data_class: {{ data_class }}
+workspace: {{ workspace }}
+version: 0.1.0
+uses_mcp: [{{ uses_mcp }}]
+capabilities: [{{ capability }}]
+domains: [{{ domain }}]

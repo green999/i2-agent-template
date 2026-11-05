@@ -1,0 +1,42 @@
+"""Inbound identity for {{ name }} (template code - do not change).
+
+1. Every request must carry the signed-in user's Entra token, addressed to {{ identity_uri }} (the team identity),
+   sent by the approved UI ({{ ui_client_id }}).
+2. The raw token is SEALED (encrypted) before LangGraph stores it with the run; the graph unseals it
+   in memory only to do On-Behalf-Of exchanges for MCP calls.
+3. Threads and runs are private to the user who created them."""
+from __future__ import annotations
+
+import asyncio
+
+from langgraph_sdk import Auth
+
+from platform_auth import AuthError, seal, validate_bearer
+
+auth = Auth()
+
+
+@auth.authenticate
+async def authenticate(authorization: str | None) -> Auth.types.MinimalUserDict:
+    try:
+        caller = await asyncio.to_thread(validate_bearer, authorization)
+    except AuthError as e:
+        raise Auth.exceptions.HTTPException(status_code=e.status, detail=str(e))
+    if caller.is_app_only:
+        raise Auth.exceptions.HTTPException(status_code=403, detail="a signed-in user is required")
+    return {
+        "identity": caller.oid,
+        "display_name": caller.upn,
+        "groups": caller.groups,
+        "client": caller.client_id,
+        "sealed_token": seal(caller.raw_token),
+    }
+
+
+@auth.on
+async def private_to_owner(ctx: Auth.types.AuthContext, value: dict):
+    """Each user only sees their own threads, runs and assistants' state."""
+    filters = {"owner": ctx.user.identity}
+    if isinstance(value, dict):
+        value.setdefault("metadata", {}).update(filters)
+    return filters

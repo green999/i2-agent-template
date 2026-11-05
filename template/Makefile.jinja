@@ -1,0 +1,28 @@
+# The pipeline runs these targets: test -> deploy (test env) -> evals (gate) -> deploy (prod) -> register
+NAME := {{ name }}
+PORT ?= 2024
+
+vendor:          ## build the internal identity library wheel into vendor/ (needed by langgraph build)
+	pip wheel --no-deps -w vendor $${PLATFORM_AUTH:?set PLATFORM_AUTH=<i2-platform-auth folder>}
+
+test:            ## unit tests
+	python -m pytest -q tests
+
+run-local:       ## langgraph dev server against the prototype's mock Entra + gateway
+	AUTH_MODE=local AZURE_CLIENT_ID={{ identity_client_id }} ACCEPTED_AUDIENCES={{ identity_uri }},{{ identity_client_id }} \
+	ALLOWED_CALLERS={{ ui_client_id }} langgraph dev --port $(PORT) --no-browser
+
+resolve:         ## look up each MCP server's token audience in the catalog (run before build)
+	python -m platform_catalog.resolve agent.yaml > src/agent/mcp_audiences.json
+
+evals:           ## the CI gate: fails below EVAL_THRESHOLD (default 0.85)
+	python evals/run_evals.py
+
+register:        ## write agent.yaml into the catalog
+	python -m platform_catalog.register agent.yaml --endpoint $${ENDPOINT:-http://127.0.0.1:$(PORT)}
+
+deploy: vendor   ## build the image and push it
+	langgraph build -t $${ACR}/$(NAME):$${TAG:-dev} && docker push $${ACR}/$(NAME):$${TAG:-dev}
+	@echo "then update the LangSmith Deployment revision to the new image (LangSmith UI/API or your pipeline task)"
+
+.PHONY: vendor test run-local resolve evals register deploy

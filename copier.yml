@@ -1,0 +1,61 @@
+# Agent golden template (LangGraph on self-hosted LangSmith).  Usage:
+#   copier copy --trust templates/agent-template services/<agent-name>
+#   copier update            # later, inside the generated project, to take template fixes
+_subdirectory: template
+_answers_file: .copier-answers.yml
+_min_copier_version: "9.0"
+
+name:
+  type: str
+  help: Agent name, lowercase kebab-case (the graph id is the same with underscores)
+  validator: >-
+    {% if not (name | regex_search('^[a-z][a-z0-9-]{0,40}[a-z0-9]$')) %}use lowercase letters, digits and dashes; start with a letter, do not end with a dash{% endif %}
+team:
+  type: str
+  help: Owning team (must exist in the catalog ontology)
+owner:
+  type: str
+  help: Owner's UPN (email)
+  validator: "{% if '@' not in owner %}enter the owner's email (UPN){% endif %}"
+purpose:
+  type: str
+  help: One line - what the agent does for users
+data_class:
+  type: str
+  choices: [internal, finance-internal, hr-confidential]
+  default: internal
+workspace:
+  type: str
+  help: LangSmith workspace for traces and deployment
+uses_mcp:
+  type: str
+  help: Comma-separated MCP servers this agent calls (names as registered in the catalog)
+capability:
+  type: str
+  help: Capability from the ontology
+domain:
+  type: str
+  help: Domain from the ontology
+identity:
+  type: str
+  default: "agents-{{ team }}"
+  help: The agents app registration shared by the team (e.g. i2_agents-platform). Local runs use agents-<team>.
+identity_uri:
+  type: str
+  default: "api://{{ identity }}"
+  help: Its Application ID URI (e.g. api://<its client id>)
+identity_client_id:
+  type: str
+  default: "{{ identity }}"
+  help: Its client id (GUID). Local runs use the name.
+ui_client_id:
+  type: str
+  default: chat-ui
+  help: Client id of the chat UI app registration allowed to call this agent
+agent_auth:
+  type: str
+  help: Who may call the agent
+  choices:
+    "off - LangSmith deployment API key only (today's setup; MCP calls go direct, no user identity)": "off"
+    "entra - signed-in user's Entra token; per-user tools through the MCP gateway (target)": entra
+  default: "off"
